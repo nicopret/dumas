@@ -1,21 +1,30 @@
-:root {
-  font-family: Arial, Helvetica, sans-serif;
-  color: #242424;
-  background: #faf9f6;
-}
-
-body {
-  margin: 0;
-}
-
-main {
-  max-width: 40rem;
-  margin: 15vh auto;
-  padding: 0 1.5rem;
-  line-height: 1.6;
-}
-
-h1 {
-  margin-bottom: 0;
-  font-size: 3rem;
-}
+:root { font-family: Arial, Helvetica, sans-serif; color: #242424; background: #faf9f6; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 52rem; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.6; }
+header { margin-bottom: 3rem; }
+h1 { margin-bottom: 0; font-size: clamp(2rem, 6vw, 3rem); overflow-wrap: anywhere; }
+h2, h3, p { margin-top: 0; }
+h3 { margin-bottom: .5rem; overflow-wrap: anywhere; }
+.muted { color: #62625c; }
+.section-heading, .project-card, .actions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.section-heading { margin-bottom: 1rem; flex-wrap: wrap; }
+.section-heading h2 { margin: 0; }
+.panel { padding: 1.5rem; background: white; border: 1px solid #deded5; border-radius: .6rem; margin-bottom: 1rem; }
+.panel p:last-child { margin-bottom: 0; }
+.project-list { padding: 0; list-style: none; }
+.project-card > div { min-width: 0; }
+.empty-state { padding-block: 3rem; text-align: center; }
+button, .button { font: inherit; display: inline-block; border: 1px solid #354d3b; background: #354d3b; color: white; padding: .6rem 1rem; border-radius: .35rem; cursor: pointer; text-decoration: none; flex-shrink: 0; }
+.secondary { background: white; color: #354d3b; }
+button:disabled { opacity: .55; cursor: default; }
+a { color: #354d3b; }
+:focus-visible { outline: 3px solid #9d7333; outline-offset: 3px; }
+label { display: block; margin-bottom: .5rem; font-weight: bold; }
+input { width: 100%; padding: .7rem; font: inherit; border: 1px solid #8b8b80; border-radius: .3rem; }
+.actions { justify-content: flex-end; margin-top: 1rem; flex-wrap: wrap; }
+.error { color: #a02121; margin-top: .75rem; }
+dt { font-weight: bold; }
+dd { margin: .2rem 0 1.25rem; overflow-wrap: anywhere; }
+dd:last-child { margin-bottom: 0; }
+@media (max-width: 480px) { main { margin: 2rem auto; } .project-card { align-items: flex-start; flex-direction: column; } }
