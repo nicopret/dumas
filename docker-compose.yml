@@ -1,0 +1,18 @@
+services:
+  dumas:
+    build: .
+    init: true
+    restart: unless-stopped
+    ports:
+      - "9000:3000"
+    environment:
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+      - next_cache:/app/.next
+      - ./data:/app/data
+
+volumes:
+  node_modules:
+  next_cache:
