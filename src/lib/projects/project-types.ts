@@ -6,10 +6,17 @@ export interface FiveSentenceSummary {
   resolution: string;
 }
 
+export type MainStorySectionId = keyof FiveSentenceSummary;
+
+export interface MainStoryWorkflow {
+  order: MainStorySectionId[];
+  sections: Record<MainStorySectionId, { details: string }>;
+}
+
 export interface DumasProject {
   schemaVersion: 1;
   id: string;
-  series: { title: string; premise: string; summary: FiveSentenceSummary };
+  series: { title: string; premise: string; summary: FiveSentenceSummary; mainStory: MainStoryWorkflow };
   createdAt: string;
   updatedAt: string;
 }

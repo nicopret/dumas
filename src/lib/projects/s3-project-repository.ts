@@ -11,13 +11,18 @@ import { getAwsConfig } from "../aws/aws-config.ts";
 import { s3Client } from "../aws/s3-client.ts";
 import {
   InvalidPremiseError,
+  InvalidMainStoryOrderError,
+  InvalidMainStorySectionError,
+  InvalidSectionDetailsError,
+  InvalidSectionTitleError,
   InvalidTitleError,
   isProjectId,
   parseProject,
   serializeProject,
   type ProjectRepository,
 } from "./project-repository.ts";
-import { emptySummary, type DumasProject, type FiveSentenceSummary, type ProjectSummary } from "./project-types.ts";
+import { defaultMainStoryOrder, emptyMainStorySections, isMainStoryOrder, isMainStorySectionId } from "./main-story.ts";
+import { emptySummary, type DumasProject, type FiveSentenceSummary, type MainStorySectionId, type ProjectSummary } from "./project-types.ts";
 
 export class S3ConfigurationError extends Error {
   constructor() { super("S3 project storage is not configured."); }
@@ -95,7 +100,7 @@ export class S3ProjectRepository {
     const project: DumasProject = {
       schemaVersion: 1,
       id: randomUUID(),
-      series: { title: title.trim(), premise: "", summary: emptySummary() },
+      series: { title: title.trim(), premise: "", summary: emptySummary(), mainStory: { order: defaultMainStoryOrder(), sections: emptyMainStorySections() } },
       createdAt: now,
       updatedAt: now,
     };
@@ -136,13 +141,38 @@ export class S3ProjectRepository {
     await this.putProject(project);
     return project;
   }
+
+  async updateMainStoryOrder(id: string, order: MainStorySectionId[]): Promise<DumasProject | null> {
+    if (!isProjectId(id)) return null;
+    if (!isMainStoryOrder(order)) throw new InvalidMainStoryOrderError();
+    const project = await this.getProject(id);
+    if (!project) return null;
+    project.series.mainStory.order = [...order];
+    project.updatedAt = new Date().toISOString();
+    await this.putProject(project);
+    return project;
+  }
+
+  async updateMainStorySection(id: string, sectionId: string, section: { title: unknown; details: unknown }): Promise<DumasProject | null> {
+    if (!isProjectId(id)) return null;
+    if (!isMainStorySectionId(sectionId)) throw new InvalidMainStorySectionError();
+    if (typeof section.title !== "string" || !section.title.trim()) throw new InvalidSectionTitleError();
+    if (typeof section.details !== "string") throw new InvalidSectionDetailsError();
+    const project = await this.getProject(id);
+    if (!project) return null;
+    project.series.summary[sectionId] = section.title.trim();
+    project.series.mainStory.sections[sectionId].details = section.details.trim();
+    project.updatedAt = new Date().toISOString();
+    await this.putProject(project);
+    return project;
+  }
 }
 
 export function createRuntimeS3ProjectRepository(): ProjectRepository {
   const config = getAwsConfig();
   if (!config.bucket || !config.region) {
     const unavailable = async () => { throw new S3ConfigurationError(); };
-    return { listProjects: unavailable, createProject: unavailable, getProject: unavailable, updatePremise: unavailable, updateSummary: unavailable } as ProjectRepository;
+    return { listProjects: unavailable, createProject: unavailable, getProject: unavailable, updatePremise: unavailable, updateSummary: unavailable, updateMainStoryOrder: unavailable, updateMainStorySection: unavailable } as ProjectRepository;
   }
   return new S3ProjectRepository(s3Client, config.bucket, config.prefix);
 }

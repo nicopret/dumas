@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { projectRepository } from "@/lib/projects/project-repository";
-import { PremiseEditor } from "@/components/snowflake/premise-editor";
-import { SummaryEditor } from "@/components/snowflake/summary-editor";
+import { MainStoryWorkflow } from "@/components/snowflake/main-story-workflow";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
@@ -16,6 +15,5 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
   }
   if (!project) notFound();
   return <main><Link href="/">← Dumas</Link><h1>{project.series.title}</h1>
-    <PremiseEditor key={`premise-${project.id}`} project={project} />
-    <SummaryEditor key={`summary-${project.id}`} project={project} /></main>;
+    <MainStoryWorkflow key={`main-story-${project.id}`} project={project} /></main>;
 }

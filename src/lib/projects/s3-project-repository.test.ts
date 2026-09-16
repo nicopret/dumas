@@ -142,3 +142,78 @@ test("saves a complete trimmed summary in the same object and preserves all othe
   assert.equal(fake.objects.size, 1);
   assert.equal(await repository.updateSummary(randomUUID(), { setup: "", disaster1: "", disaster2: "", disaster3: "", resolution: "" }), null);
 });
+
+test("defaults missing Main Story order without rewriting the S3 object", async () => {
+  const { fake, repository } = fixture();
+  const project = await repository.createProject("Legacy workflow");
+  const legacySeries = { title: project.series.title, premise: project.series.premise, summary: project.series.summary };
+  const raw = JSON.stringify({ ...project, series: legacySeries });
+  fake.objects.set(repository.keyFor(project.id), raw);
+  assert.deepEqual((await repository.getProject(project.id))?.series.mainStory.order,
+    ["setup", "disaster1", "disaster2", "disaster3", "resolution"]);
+  assert.equal(fake.objects.get(repository.keyFor(project.id)), raw);
+});
+
+test("saves Main Story order in the existing S3 object and preserves all other data", async () => {
+  const { fake, repository } = fixture();
+  const project = await repository.createProject("Workflow");
+  const extended = { ...project, updatedAt: "2020-01-01T00:00:00.000Z", future: { thread: true }, series: {
+    ...project.series, premise: "Keep premise.", summary: { ...project.series.summary, setup: "Keep setup." },
+  } };
+  fake.objects.set(repository.keyFor(project.id), JSON.stringify(extended));
+  const order = ["setup", "disaster2", "disaster1", "disaster3", "resolution"] as const;
+  const updated = await repository.updateMainStoryOrder(project.id, [...order]);
+  assert.deepEqual(updated?.series.mainStory.order, order);
+  assert.equal(updated?.createdAt, project.createdAt);
+  assert.notEqual(updated?.updatedAt, extended.updatedAt);
+  assert.equal(updated?.series.premise, "Keep premise.");
+  assert.equal(updated?.series.summary.setup, "Keep setup.");
+  const stored = JSON.parse(fake.objects.get(repository.keyFor(project.id))!);
+  assert.deepEqual(stored.future, extended.future);
+  assert.equal(fake.objects.size, 1);
+  assert.equal(await repository.updateMainStoryOrder(randomUUID(), [...order]), null);
+});
+
+test("loads legacy Main Story sections as empty details without rewriting S3", async () => {
+  const { fake, repository } = fixture();
+  const project = await repository.createProject("Legacy details");
+  const legacySections = Object.fromEntries(Object.entries(project.series.mainStory.sections).map(([id, section]) =>
+    [id, { ...section, title: `Old ${id} title` }]));
+  const legacy = { ...project, series: { ...project.series, mainStory: {
+    order: project.series.mainStory.order, sections: legacySections,
+  } } };
+  const raw = JSON.stringify(legacy);
+  fake.objects.set(repository.keyFor(project.id), raw);
+  assert.equal((await repository.getProject(project.id))?.series.mainStory.sections.disaster2.details, "");
+  assert.equal(fake.objects.get(repository.keyFor(project.id)), raw);
+});
+
+test("S3 detail update targets one section and preserves order, other details, summary, and unrelated data", async () => {
+  const { fake, repository } = fixture();
+  const project = await repository.createProject("Details");
+  project.updatedAt = "2020-01-01T00:00:00.000Z";
+  project.series.premise = "Keep premise.";
+  project.series.summary.disaster2 = "Keep summary.";
+  project.series.summary.disaster1 = "Other summary stays.";
+  project.series.mainStory.order = ["setup", "disaster2", "disaster1", "disaster3", "resolution"];
+  project.series.mainStory.sections.setup.details = "Keep other details.";
+  const extended = { ...project, future: { value: 1 } };
+  fake.objects.set(repository.keyFor(project.id), JSON.stringify(extended));
+  const updated = await repository.updateMainStorySection(project.id, "disaster2", {
+    title: "  The Rival Awakens  ", details: "  First paragraph.\n\nSecond paragraph.  ",
+  });
+  assert.equal(updated?.series.summary.disaster2, "The Rival Awakens");
+  assert.equal(updated?.series.mainStory.sections.disaster2.details, "First paragraph.\n\nSecond paragraph.");
+  assert.equal(updated?.series.mainStory.sections.setup.details, "Keep other details.");
+  assert.deepEqual(updated?.series.mainStory.order, project.series.mainStory.order);
+  assert.equal(updated?.series.premise, "Keep premise.");
+  assert.equal(updated?.series.summary.disaster1, "Other summary stays.");
+  assert.equal(updated?.createdAt, project.createdAt);
+  assert.notEqual(updated?.updatedAt, project.updatedAt);
+  const stored = JSON.parse(fake.objects.get(repository.keyFor(project.id))!);
+  assert.deepEqual(stored.future, extended.future);
+  assert.equal(fake.objects.size, 1);
+  assert.equal(await repository.updateMainStorySection(randomUUID(), "setup", { title: "Missing", details: "missing" }), null);
+  await assert.rejects(repository.updateMainStorySection(project.id, "unknown", { title: "Title", details: "text" }));
+  await assert.rejects(repository.updateMainStorySection(project.id, "setup", { title: "  ", details: "text" }));
+});

@@ -122,8 +122,9 @@ overwrite protection and never changes or deletes the local source files.
 ## Series projects
 
 Use **+ New Series** to enter a title, or **Open** to load an existing series.
-The project page contains Snowflake Step 1, the one-sentence premise editor, and
-Step 2, the five-sentence summary editor.
+The project page uses the vertical Main Story workflow as its primary workspace.
+Premise and five-sentence summary data remain in the project JSON and continue to
+provide each node's read-only preview, but their initial setup forms are hidden.
 
 Titles are trimmed and must not be blank. The form prevents duplicate submissions,
 shows a recoverable error if saving fails, and opens the new project immediately
@@ -145,6 +146,16 @@ the most recently updated first. Each project page links back to the launcher.
       "disaster2": "",
       "disaster3": "",
       "resolution": ""
+    },
+    "mainStory": {
+      "order": ["setup", "disaster1", "disaster2", "disaster3", "resolution"],
+      "sections": {
+        "setup": { "details": "" },
+        "disaster1": { "details": "" },
+        "disaster2": { "details": "" },
+        "disaster3": { "details": "" },
+        "resolution": { "details": "" }
+      }
     }
   },
   "createdAt": "2026-09-15T20:15:00.000Z",
@@ -165,6 +176,8 @@ readable UTC dates and times. Pages and listing responses are dynamic.
 | `GET /api/projects/{projectId}` | Complete project; 400 for malformed IDs, 404 for missing projects |
 | `PATCH /api/projects/{projectId}/premise` | Save the Step 1 premise |
 | `PATCH /api/projects/{projectId}/summary` | Save all five Step 2 summary fields |
+| `PATCH /api/projects/{projectId}/main-story` | Save the vertical Main Story workflow order |
+| `PATCH /api/projects/{projectId}/main-story/{sectionId}` | Save one section's custom title and expanded detail text |
 
 S3 tests inject a mocked client and never contact AWS. They cover creation, loading,
 missing objects, premise updates with unknown-field preservation, pagination,
@@ -199,9 +212,8 @@ src/
 - Live browser hot reload worked through the Pi's LAN address. Temporary
   verification data and source edits were removed afterward.
 
-The workspace currently supports the one-sentence premise and five-sentence
-summary. Expanded sections, visual workflows, renaming, deletion, autosave, and
-automatic backups are not implemented.
+The workspace retains the one-sentence premise and five-sentence summary as source
+data while focusing its visible editing experience on the Main Story workflow.
 
 ## Snowflake Step 1: one-sentence premise
 
@@ -244,3 +256,23 @@ unsaved, saving, and failed states while retaining text after a failed request.
 the complete S3 project, changes only `series.summary` and `updatedAt`, then writes
 the complete document back to the existing object. Legacy projects without a
 summary receive five empty strings in memory and are not rewritten merely by loading.
+
+## Main Story visual workflow
+
+The Main Story workflow renders the five summary sections as a
+vertical connected diagram. Nodes read their text directly from `series.summary`;
+the workflow stores its order and ID-keyed editable section data. Headings expand
+and collapse client-side.
+
+Sections can be reordered with pointer or keyboard drag-and-drop powered by
+`@dnd-kit`, or with explicit **Move up** and **Move down** buttons. A completed
+move is saved immediately through `PATCH /api/projects/{projectId}/main-story`.
+Each summary sentence is the corresponding node's visible and editable title.
+Expanded nodes contain that title input and an independent plain-text detail editor
+with live word count, save status, and **Ctrl+S / Cmd+S** support. One save updates
+`series.summary[sectionId]` and the ID-keyed detail atomically, without storing a
+duplicate title under `mainStory.sections`.
+
+Legacy projects without `mainStory` use the default five-section order and empty
+details in memory. Deprecated title properties in older section objects are safely
+ignored and do not cause a load-time rewrite.

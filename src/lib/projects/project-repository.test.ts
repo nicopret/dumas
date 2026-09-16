@@ -172,3 +172,87 @@ test("summary update trims all fields and preserves premise, timestamps, and unr
   assert.equal(stored.series.notes, "keep");
   assert.equal(await repository.updateSummary(randomUUID(), { setup: "", disaster1: "", disaster2: "", disaster3: "", resolution: "" }), null);
 });
+
+test("legacy projects default Main Story order in memory without rewriting on load", async (t) => {
+  const { directory, repository } = await fixture(t);
+  const project = await repository.createProject("Legacy workflow");
+  const legacySeries = { title: project.series.title, premise: project.series.premise, summary: project.series.summary };
+  const legacy = { ...project, series: legacySeries };
+  const raw = JSON.stringify(legacy);
+  const file = path.join(directory, `${project.id}.json`);
+  await writeFile(file, raw);
+  assert.deepEqual((await repository.getProject(project.id))?.series.mainStory.order,
+    ["setup", "disaster1", "disaster2", "disaster3", "resolution"]);
+  assert.equal(await readFile(file, "utf8"), raw);
+});
+
+test("Main Story order update preserves project content and timestamps correctly", async (t) => {
+  const { directory, repository } = await fixture(t);
+  const project = await repository.createProject("Workflow");
+  project.series.premise = "Keep premise.";
+  project.series.summary.setup = "Keep setup.";
+  const extended = { ...project, updatedAt: "2020-01-01T00:00:00.000Z", future: { thread: true } };
+  await writeFile(path.join(directory, `${project.id}.json`), JSON.stringify(extended));
+  const order = ["setup", "disaster2", "disaster1", "disaster3", "resolution"] as const;
+  const updated = await repository.updateMainStoryOrder(project.id, [...order]);
+  assert.deepEqual(updated?.series.mainStory.order, order);
+  assert.equal(updated?.createdAt, project.createdAt);
+  assert.notEqual(updated?.updatedAt, extended.updatedAt);
+  assert.equal(updated?.series.premise, "Keep premise.");
+  assert.equal(updated?.series.summary.setup, "Keep setup.");
+  assert.deepEqual((updated as unknown as { future: unknown }).future, extended.future);
+  assert.equal(await repository.updateMainStoryOrder(randomUUID(), [...order]), null);
+});
+
+test("legacy Main Story data defaults every section detail without rewriting", async (t) => {
+  const { directory, repository } = await fixture(t);
+  const project = await repository.createProject("Legacy details");
+  const legacy = { ...project, series: { ...project.series, mainStory: { order: project.series.mainStory.order } } };
+  const raw = JSON.stringify(legacy);
+  const file = path.join(directory, `${project.id}.json`);
+  await writeFile(file, raw);
+  const loaded = await repository.getProject(project.id);
+  assert.deepEqual(loaded?.series.mainStory.sections, {
+    setup: { details: "" }, disaster1: { details: "" }, disaster2: { details: "" },
+    disaster3: { details: "" }, resolution: { details: "" },
+  });
+  assert.equal(await readFile(file, "utf8"), raw);
+});
+
+test("saves trimmed details for every section while preserving paragraphs and other data", async (t) => {
+  const { directory, repository } = await fixture(t);
+  const project = await repository.createProject("Details");
+  project.updatedAt = "2020-01-01T00:00:00.000Z";
+  project.series.premise = "Keep premise.";
+  project.series.mainStory.order = ["resolution", "setup", "disaster1", "disaster2", "disaster3"];
+  const extended = { ...project, future: { value: 1 } };
+  await writeFile(path.join(directory, `${project.id}.json`), JSON.stringify(extended));
+  const ids = ["setup", "disaster1", "disaster2", "disaster3", "resolution"] as const;
+  for (const id of ids) await repository.updateMainStorySection(project.id, id, {
+    title: `  Custom ${id}  `, details: `  ${id} first paragraph.\n\n${id} second paragraph.  `,
+  });
+  const updated = await repository.getProject(project.id);
+  for (const id of ids) {
+    assert.equal(updated?.series.summary[id], `Custom ${id}`);
+    assert.equal(updated?.series.mainStory.sections[id].details, `${id} first paragraph.\n\n${id} second paragraph.`);
+  }
+  assert.equal(updated?.createdAt, project.createdAt);
+  assert.notEqual(updated?.updatedAt, project.updatedAt);
+  assert.equal(updated?.series.premise, "Keep premise.");
+  assert.deepEqual(updated?.series.mainStory.order, project.series.mainStory.order);
+  assert.deepEqual((updated as unknown as { future: unknown }).future, extended.future);
+  assert.equal(await repository.updateMainStorySection(randomUUID(), "setup", { title: "Missing", details: "missing" }), null);
+});
+
+test("section updates accept empty details and reject blank titles, invalid IDs, and values", async (t) => {
+  const { repository } = await fixture(t);
+  const project = await repository.createProject("Validation");
+  const updated = await repository.updateMainStorySection(project.id, "setup", { title: "  Opening  ", details: "   " });
+  assert.equal(updated?.series.summary.setup, "Opening");
+  assert.deepEqual(updated?.series.mainStory.sections.setup, { details: "" });
+  assert.equal("title" in (updated?.series.mainStory.sections.setup ?? {}), false);
+  assert.equal(updated?.series.summary.disaster1, "");
+  await assert.rejects(repository.updateMainStorySection(project.id, "setup", { title: "   ", details: "text" }));
+  await assert.rejects(repository.updateMainStorySection(project.id, "unknown", { title: "Title", details: "text" }));
+  await assert.rejects(repository.updateMainStorySection(project.id, "setup", { title: "Title", details: 42 }));
+});
