@@ -7,6 +7,12 @@ services:
       - "9000:3000"
     environment:
       WATCHPACK_POLLING: "true"
+      AWS_REGION: "${AWS_REGION:-}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      AWS_SESSION_TOKEN: "${AWS_SESSION_TOKEN:-}"
+      DUMAS_S3_BUCKET: "${DUMAS_S3_BUCKET:-}"
+      DUMAS_S3_PREFIX: "${DUMAS_S3_PREFIX:-projects/}"
     volumes:
       - .:/app
       - node_modules:/app/node_modules
