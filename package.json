@@ -8,9 +8,11 @@
     "start": "next start --hostname 0.0.0.0 --port 3000",
     "lint": "eslint .",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "node --conditions=react-server --experimental-strip-types --test src/lib/projects/project-repository.test.ts"
+    "test": "node --conditions=react-server --experimental-strip-types --test src/lib/projects/project-repository.test.ts src/lib/projects/s3-project-repository.test.ts src/lib/projects/summary-payload.test.ts src/lib/aws/aws-config.test.ts",
+    "migrate:projects-to-s3": "node --conditions=react-server --experimental-strip-types scripts/migrate-projects-to-s3.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1133.0",
     "next": "16.3.5",
     "react": "19.3.0",
     "react-dom": "19.3.0",

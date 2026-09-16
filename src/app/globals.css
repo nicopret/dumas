@@ -28,3 +28,8 @@ dt { font-weight: bold; }
 dd { margin: .2rem 0 1.25rem; overflow-wrap: anywhere; }
 dd:last-child { margin-bottom: 0; }
 @media (max-width: 480px) { main { margin: 2rem auto; } .project-card { align-items: flex-start; flex-direction: column; } }
+
+textarea { width: 100%; padding: 1rem; font: inherit; line-height: 1.7; border: 1px solid #8b8b80; border-radius: .3rem; resize: vertical; min-height: 10rem; }
+#snowflake-heading { margin-top: 2rem; }
+.summary-fields { display: grid; gap: 1.25rem; }
+.summary-fields textarea { min-height: 7rem; }

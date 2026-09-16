@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { projectRepository } from "@/lib/projects/project-repository";
-import { formatDate } from "@/lib/projects/format-date";
+import { PremiseEditor } from "@/components/snowflake/premise-editor";
+import { SummaryEditor } from "@/components/snowflake/summary-editor";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
@@ -15,9 +16,6 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
   }
   if (!project) notFound();
   return <main><Link href="/">← Dumas</Link><h1>{project.series.title}</h1>
-    <p>Series project loaded successfully.</p>
-    <dl className="panel"><dt>Project ID</dt><dd>{project.id}</dd>
-      <dt>Created</dt><dd><time dateTime={project.createdAt}>{formatDate(project.createdAt)}</time></dd>
-      <dt>Last updated</dt><dd><time dateTime={project.updatedAt}>{formatDate(project.updatedAt)}</time></dd>
-    </dl></main>;
+    <PremiseEditor key={`premise-${project.id}`} project={project} />
+    <SummaryEditor key={`summary-${project.id}`} project={project} /></main>;
 }
