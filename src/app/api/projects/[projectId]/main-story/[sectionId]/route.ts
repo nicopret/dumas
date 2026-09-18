@@ -28,3 +28,21 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ pr
     return Response.json({ error: "Unable to save section details. Please try again." }, { status: 500 });
   }
 }
+
+export async function DELETE(_request: Request, { params }: { params: Promise<{ projectId: string; sectionId: string }> }) {
+  const { projectId, sectionId } = await params;
+  if (!isProjectId(projectId)) return Response.json({ error: "Invalid project ID." }, { status: 400 });
+  if (!isMainStorySectionId(sectionId)) return Response.json({ error: "Invalid Main Story section ID." }, { status: 400 });
+  try {
+    const project = await projectRepository.deleteMainStorySection(projectId, sectionId);
+    if (!project) return Response.json({ error: "Series not found." }, { status: 404 });
+    return new Response(null, { status: 204 });
+  } catch (error) {
+    if (error instanceof InvalidMainStorySectionError) {
+      return Response.json({ error: "Story section not found." }, { status: 404 });
+    }
+    console.error(`Unable to delete project ${projectId} story section ${sectionId}.`,
+      error instanceof Error ? error.name : "UnknownError");
+    return Response.json({ error: "Unable to delete this story section. Please try again." }, { status: 500 });
+  }
+}

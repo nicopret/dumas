@@ -80,6 +80,13 @@ Set `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
 credentials. Compose passes these values to the server at runtime; no AWS
 configuration is exposed through `NEXT_PUBLIC_` variables.
 
+For AI rewrites, also set `GEMINI_API_KEY`. `GEMINI_MODEL` is optional and
+defaults to `gemini-3.8-flash`. Both variables remain server-side and must never
+use a `NEXT_PUBLIC_` prefix.
+
+For story expansion, set `OPENAI_API_KEY`. `OPENAI_MODEL` is optional and defaults
+to `gpt-5.6`. These variables are also server-side only.
+
 Never commit `.env` or AWS credentials.
 
 Rebuild and start the development container after configuring the environment:
@@ -102,7 +109,10 @@ The last two commands contact AWS and should only be run after credentials and a
 bucket have been configured. `docker compose exec dumas ./scripts/check-aws.sh`
 runs all three checks without displaying credentials.
 
-The application needs only `s3:ListBucket`, `s3:GetObject`, and `s3:PutObject`.
+The application needs only `s3:ListBucket`, `s3:GetObject`, `s3:PutObject`, and
+`s3:DeleteObject`. Delete permission should be scoped to project objects under
+`projects/*` (or the equivalently configured `DUMAS_S3_PREFIX`); no broader
+bucket deletion permission is required.
 The bucket must remain private. Project objects use
 `{DUMAS_S3_PREFIX}{projectId}.json`; both `projects` and `projects/` normalize to,
 for example, `projects/3bb48a8e-8914-42af-a978-ff3344c44991.json`.
@@ -122,7 +132,8 @@ overwrite protection and never changes or deletes the local source files.
 ## Series projects
 
 Use **+ New Series** to enter a title, or **Open** to load an existing series.
-The project page uses the vertical Main Story workflow as its primary workspace.
+A new project opens with the story-idea editor. After its idea is saved, the
+project page uses the vertical Main Story workflow as its primary workspace.
 Premise and five-sentence summary data remain in the project JSON and continue to
 provide each node's read-only preview, but their initial setup forms are hidden.
 
@@ -135,10 +146,11 @@ the most recently updated first. Each project page links back to the launcher.
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 4,
   "id": "3bb48a8e-8914-42af-a978-ff3344c44991",
   "series": {
     "title": "The Example Series",
+    "idea": "",
     "premise": "",
     "summary": {
       "setup": "",
@@ -147,17 +159,15 @@ the most recently updated first. Each project page links back to the launcher.
       "disaster3": "",
       "resolution": ""
     },
-    "mainStory": {
-      "order": ["setup", "disaster1", "disaster2", "disaster3", "resolution"],
-      "sections": {
-        "setup": { "details": "" },
-        "disaster1": { "details": "" },
-        "disaster2": { "details": "" },
-        "disaster3": { "details": "" },
-        "resolution": { "details": "" }
-      }
+    "mainStory": { "sections": {} },
+    "storyFlows": {
+      "primaryFlowId": "main",
+      "flows": { "main": { "id": "main", "title": "Main Story", "placements": [] } },
+      "links": {}
     }
   },
+  "characters": {},
+  "places": {},
   "createdAt": "2026-09-15T20:15:00.000Z",
   "updatedAt": "2026-09-15T20:15:00.000Z"
 }
@@ -178,6 +188,13 @@ readable UTC dates and times. Pages and listing responses are dynamic.
 | `PATCH /api/projects/{projectId}/summary` | Save all five Step 2 summary fields |
 | `PATCH /api/projects/{projectId}/main-story` | Save the vertical Main Story workflow order |
 | `PATCH /api/projects/{projectId}/main-story/{sectionId}` | Save one section's custom title and expanded detail text |
+| `POST /api/projects/{projectId}/main-story/{sectionId}/expand-suggestions` | Generate ordered OpenAI story-beat headings without modifying S3 |
+| `POST /api/projects/{projectId}/main-story/{sectionId}/expand` | Replace an active parent with selected child headings in one project save |
+| `POST /api/projects/{projectId}/main-story/{sectionId}/associations` | Associate an existing character or place with a section |
+| `POST /api/projects/{projectId}/story-flows` | Create an empty named story flow |
+| `POST /api/projects/{projectId}/story-flows/move` | Atomically move a stable section UUID into an existing or new flow |
+| `POST /api/projects/{projectId}/story-links` | Create a section-to-section or section-to-flow link |
+| `DELETE /api/projects/{projectId}/story-links/{linkId}` | Remove a link without deleting its sections or flow |
 
 S3 tests inject a mocked client and never contact AWS. They cover creation, loading,
 missing objects, premise updates with unknown-field preservation, pagination,
@@ -259,20 +276,120 @@ summary receive five empty strings in memory and are not rewritten merely by loa
 
 ## Main Story visual workflow
 
-The Main Story workflow renders the five summary sections as a
-vertical connected diagram. Nodes read their text directly from `series.summary`;
-the workflow stores its order and ID-keyed editable section data. Headings expand
-and collapse client-side.
+Schema v4 stores section objects once in `mainStory.sections` and keeps sparse grid positions in
+`storyFlows.flows[*].placements` as `{ sectionId, row }`. Existing ordered flows normalize into
+rows 1, 3, 5, and so on without changing section UUIDs or content. No competing order is
+stored in `mainStory`. New and missing workflows remain empty; no fallback sections are generated. Each section
+stores its own title, detail, optional parent/child lineage, and character/place
+association IDs. Legacy sections missing association arrays receive empty arrays
+in memory without being rewritten merely by loading. Headings expand and collapse client-side.
 
-Sections can be reordered with pointer or keyboard drag-and-drop powered by
-`@dnd-kit`, or with explicit **Move up** and **Move down** buttons. A completed
-move is saved immediately through `PATCH /api/projects/{projectId}/main-story`.
-Each summary sentence is the corresponding node's visible and editable title.
-Expanded nodes contain that title input and an independent plain-text detail editor
-with live word count, save status, and **Ctrl+S / Cmd+S** support. One save updates
-`series.summary[sectionId]` and the ID-keyed detail atomically, without storing a
-duplicate title under `mainStory.sections`.
+Flows render as columns on one horizontally and vertically scrollable story grid, with the
+primary Main Story column visually identified. Sections can be moved to an exact flow and
+positive row with pointer or keyboard drag-and-drop, the accessible move form, or explicit
+one-row controls. Empty rows and flows remain valid and visible.
+Moves preserve the section object and save the complete project once.
 
-Legacy projects without `mainStory` use the default five-section order and empty
-details in memory. Deprecated title properties in older section objects are safely
-ignored and do not cause a load-time rewrite.
+The **Link** action enters target-selection mode for another section or a flow
+header. Links reference stable IDs, remain valid when sections move, and render as
+secondary SVG arrows that do not intercept pointer interaction. Exact duplicates
+are ignored. The Story links list removes links independently of sections and flows.
+
+The workflow has its own scrollable viewport and a single CSS-zoomed canvas containing
+all lanes, cards, avatars, vertical arrows, and cross-flow SVG connectors. Controls
+support 25–150% zoom, 10% steps, width-based **Fit**, and a **100%** reset. While the
+viewport is focused, Ctrl/Cmd with `+`, `-`, or `0` controls workflow zoom; Ctrl/Cmd
+plus wheel zooms only while the pointer is over the viewport. Ordinary scrolling and
+typing shortcuts are left untouched. Zoom is client-only state and never enters the
+project document or S3 writes. Section drag transforms are divided by the zoom factor
+before dnd-kit applies them inside the scaled canvas; Story Context entity drags remain
+unmodified because their source is outside that canvas.
+Each section has a visible and editable title. Expanded nodes contain that title
+input and an independent plain-text detail editor with live word count, save status,
+and **Ctrl+S / Cmd+S** support. One save updates
+the section title and detail atomically. The original five titles are also kept in
+sync with `series.summary` for backward compatibility.
+
+Schema-version-1 projects are normalized to version 2 in memory: existing summary
+titles become section titles, and all existing details and ordering are retained.
+Loading alone does not rewrite S3; the normalized schema is persisted with the
+next successful project update.
+
+## AI section rewrites
+
+Expanded Main Story nodes can send their current unsaved detail draft to Gemini
+with **Rewrite with AI**. The server loads the project from S3 and supplies only
+the immediately preceding and following populated sections according to the visual
+workflow order. Rewrite rules are sent as a system instruction; titles, drafts,
+adjacent context, and rejected suggestions are separately delimited as author data.
+
+Gemini returns structured JSON containing the rewritten detail and up to two
+optional concise title suggestions. **Accept rewrite** immediately updates the
+visible detail and autosaves only that detail field. A successful rewrite save closes
+the preview; accepting only a title leaves it open. Autosave failures retain
+the accepted content and provide a retry without calling Gemini again.
+
+**Try another** reuses the original draft, identifies the rejected rewrite, and
+replaces both the preview and title suggestions. **Cancel** leaves unaccepted draft
+content unchanged. Missing details are marked by a derived red, accessible
+exclamation indicator and no incomplete flag is persisted.
+
+Rewrite responses stream newline-delimited JSON progress events so the editor can
+show context loading, prompt creation, Gemini submission/waiting, response receipt,
+and completion or failure without guessed timers. Gemini requests use an explicit
+60-second SDK HTTP timeout. Common authentication, permission, model, quota,
+timeout, and service errors are mapped to safe user-facing messages.
+
+Each request also writes structured server logs containing a generated request ID,
+project and section IDs, model, prompt/response lengths, duration, and available
+HTTP status. Logs never include the prompt, novel text, API key, or AWS credentials.
+
+## OpenAI story expansion
+
+**Expand with AI** sends the current, potentially unsaved section title and detail
+to the server-only OpenAI Responses API. Requests use `store: false` and strict
+Structured Outputs to return between two and ten chronological story-beat headings.
+Generating or regenerating suggestions never changes S3.
+
+Authors may select individual headings, select all, cancel, regenerate, or replace
+the active section with at least two selected beats. Replacement creates new UUID
+sections in AI order with empty details and `parentId`, records their IDs on the
+retained original parent, swaps the parent out at the same active-order position,
+and saves the complete project once. Any generated child can be expanded again.
+If the S3 save fails, the visible workflow and selection remain available for retry.
+
+The request includes a compact catalogue of the project's existing characters and
+places: permanent ID, name, and description only. The structured result identifies
+each extracted entity with a temporary reference and either a validated existing
+project ID or `null`. Server-side reconciliation rejects invented or wrong-type IDs
+and reuses exact trimmed, case-insensitive name matches as a fallback.
+
+Per-heading references to existing entities are immediately eligible for mapping to
+their permanent UUIDs. References to genuinely new suggestions are mapped only after
+the author adds them. Selected child sections persist only resolved `characterIds`
+and `placeIds`; unresolved temporary references never enter project storage. Existing
+results show an **Already in project** label and a **View** action instead of an Add
+button.
+
+The project workspace uses a workflow pane plus a sticky, independently scrolling
+Story Context pane containing only persisted characters and places. They can be selected without changing the
+expanded workflow section. On narrow screens the panes stack vertically. Accepting
+a suggestion creates a UUID-backed project-level entity and performs one complete
+project save. Names are matched case-insensitively after trimming; an existing match
+is selected instead of creating a duplicate. Failed saves keep the AI suggestion
+available for retry.
+
+Persisted Story Context characters and places can also be dragged onto any collapsed
+or expanded active workflow card. Typed drag data keeps entity association separate
+from section sorting; a successful drop saves the complete project once and displays
+the existing compact association chip. Duplicate drops do not write to storage.
+Expanded cards provide keyboard-accessible **Add character** and **Add place**
+selectors that use the same association endpoint. Failed saves leave the visible
+workflow unchanged so the operation can be retried.
+
+Story Context entities support an optional nullable `imageUrl`. The shared circular
+avatar uses that image when available and falls back to deterministic initials if it
+is absent or cannot load. Medium avatars appear beside names in Story Context, while
+small interactive avatars appear in workflow headers with characters before places.
+Each type shows at most five avatars followed by an accessible `+N` overflow marker;
+the underlying section associations remain unchanged.
