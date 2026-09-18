@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { projectRepository } from "@/lib/projects/project-repository";
-import { MainStoryWorkflow } from "@/components/snowflake/main-story-workflow";
+import { ProjectWorkspace } from "@/components/project-workspace";
+import { createAiModelRegistry } from "@/lib/ai/model-registry";
+import { needsIdeaOnboarding } from "@/lib/projects/idea-editor-state";
+import { ProjectOnboarding } from "@/components/project-onboarding";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export default async function ProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
@@ -14,6 +17,10 @@ export default async function ProjectPage({ params }: { params: Promise<{ projec
       <p>Return to your series and try again.</p></main>;
   }
   if (!project) notFound();
+  const modelRegistry = createAiModelRegistry();
   return <main><Link href="/">← Dumas</Link><h1>{project.series.title}</h1>
-    <MainStoryWorkflow key={`main-story-${project.id}`} project={project} /></main>;
+    {needsIdeaOnboarding(project)
+      ? <ProjectOnboarding key={`onboarding-${project.id}`} initialProject={project} modelRegistry={modelRegistry} />
+      : <ProjectWorkspace key={`workspace-${project.id}`} initialProject={project} modelRegistry={modelRegistry} />}
+  </main>;
 }

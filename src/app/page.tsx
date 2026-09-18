@@ -1,6 +1,8 @@
 import { ProjectLauncher } from "@/components/project-launcher";
 import { projectRepository } from "@/lib/projects/project-repository";
 import type { ProjectSummary } from "@/lib/projects/project-types";
+import { createAiModelRegistry } from "@/lib/ai/model-registry";
+import { AiModelsPanel } from "@/components/ai-models-panel";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export default async function Home() {
@@ -13,5 +15,6 @@ export default async function Home() {
   return <main>
     <header><h1>Dumas</h1><p className="muted">Visual story development</p></header>
     <ProjectLauncher projects={projects} loadError={error} />
+    <AiModelsPanel registry={createAiModelRegistry()} />
   </main>;
 }
